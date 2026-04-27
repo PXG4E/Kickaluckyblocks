@@ -76,21 +76,74 @@ local function runMainScript()
     local Window = MacLib:Window({
         Title        = "PXG HUB",
         Subtitle     = "Kick a Lucky Block",
-        -- CHANGED: mobile size made much larger and less cramped
-        Size         = isMobile and UDim2.fromOffset(500, 620) or UDim2.fromOffset(868, 650),
+        -- CHANGED: mobile is now wide horizontally (landscape-balanced), not just tall
+        Size         = isMobile and UDim2.fromOffset(820, 500) or UDim2.fromOffset(868, 650),
         DragStyle    = isMobile and 2 or 1,
         AcrylicBlur  = not isMobile,
         ShowUserInfo = not isMobile,
         Keybind      = Enum.KeyCode.RightControl,
     })
-    -- CHANGED: bigger scale on mobile so text/buttons are readable
-    if isMobile then Window:SetScale(0.88) end
+    -- CHANGED: scale raised so content is large and readable on mobile
+    if isMobile then Window:SetScale(0.78) end
+
+    -- ============================================================
+    -- CHANGED: Find MacLib's red/yellow traffic-light dots and replace
+    -- them with a flat ✕ (close) and — (minimize) icon style
+    -- ============================================================
+    task.spawn(function()
+        task.wait(0.4) -- wait for MacLib to fully render its window
+
+        -- MacLib's standard traffic-light button BackgroundColor3 values
+        local CLOSE_COLOR = Color3.fromRGB(255, 95,  87)
+        local MIN_COLOR   = Color3.fromRGB(255, 189, 46)
+        local MAX_COLOR   = Color3.fromRGB(40,  201, 64)
+
+        local function styleBtn(v, icon, iconColor)
+            v.BackgroundColor3 = Color3.fromRGB(36, 38, 56)
+            pcall(function() v.Image             = "" end)
+            pcall(function() v.ImageTransparency = 1  end)
+            v.Text             = icon
+            v.TextColor3       = iconColor
+            v.Font             = Enum.Font.GothamBold
+            v.TextSize         = 11
+            v.TextTransparency = 0
+            local corner = v:FindFirstChildOfClass("UICorner")
+            if corner then
+                corner.CornerRadius = UDim.new(0, 5)
+            else
+                Instance.new("UICorner", v).CornerRadius = UDim.new(0, 5)
+            end
+        end
+
+        local function scanAndReplace(root)
+            for _, v in ipairs(root:GetDescendants()) do
+                if v:IsA("TextButton") or v:IsA("ImageButton") then
+                    local c = v.BackgroundColor3
+                    if c == CLOSE_COLOR then
+                        -- Close dot → ✕ in red
+                        styleBtn(v, "✕", Color3.fromRGB(220, 70, 70))
+                    elseif c == MIN_COLOR then
+                        -- Minimize dot → — in grey
+                        styleBtn(v, "—", Color3.fromRGB(160, 162, 185))
+                    elseif c == MAX_COLOR then
+                        -- Maximize dot → hide entirely
+                        v.BackgroundTransparency = 1
+                        v.TextTransparency       = 1
+                        pcall(function() v.ImageTransparency = 1 end)
+                    end
+                end
+            end
+        end
+
+        pcall(scanAndReplace, game:GetService("CoreGui"))
+        pcall(scanAndReplace, LocalPlayer.PlayerGui)
+    end)
 
     -- Services
-    local RunService       = game:GetService("RunService")
-    local Players          = game:GetService("Players")
-    local ReplicatedStorage= game:GetService("ReplicatedStorage")
-    local TeleportService  = game:GetService("TeleportService")
+    local RunService        = game:GetService("RunService")
+    local Players           = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local TeleportService   = game:GetService("TeleportService")
 
     -- Session counters (declared early so all closures can capture them)
     local sessionKicks, sessionSells, sessionCollects = 0, 0, 0
@@ -111,11 +164,11 @@ local function runMainScript()
 
     -- Platform
     local platform = Instance.new("Part")
-    platform.Size      = Vector3.new(10, 1, 10)
-    platform.Anchored  = true
+    platform.Size         = Vector3.new(10, 1, 10)
+    platform.Anchored     = true
     platform.Transparency = 1
-    platform.Parent    = workspace
-    platform.CanCollide= false
+    platform.Parent       = workspace
+    platform.CanCollide   = false
 
     -- Auto Bonus helper
     local function ClickTargetBonus()
@@ -138,9 +191,8 @@ local function runMainScript()
     end
 
     -- ── Tabs ──────────────────────────────────────────────────
-    -- CHANGED: removed StatusTab, only one tab now
-    local TabGroup  = Window:TabGroup()
-    local MainTab   = TabGroup:Tab({ Name = "Main Settings" })
+    local TabGroup = Window:TabGroup()
+    local MainTab  = TabGroup:Tab({ Name = "Main Settings" })
 
     local MainLeft  = MainTab:Section({ Side = "Left"  })
     local MainRight = MainTab:Section({ Side = "Right" })
@@ -165,18 +217,18 @@ local function runMainScript()
             end
         end,
     })
-    MainLeft:Toggle({ Name = "Auto Sell All",     Default = false, Callback = function(v) Flags.Sell    = v end })
-    MainLeft:Toggle({ Name = "Auto Bonus",        Default = false, Callback = function(v) Flags.Bonus   = v end })
-    MainLeft:Toggle({ Name = "Auto Collect Money",Default = false, Callback = function(v) Flags.Collect = v end })
-    MainLeft:Toggle({ Name = "Anti AFK",          Default = false, Callback = function(v) Flags.AntiAfk = v end })
+    MainLeft:Toggle({ Name = "Auto Sell All",      Default = false, Callback = function(v) Flags.Sell    = v end })
+    MainLeft:Toggle({ Name = "Auto Bonus",         Default = false, Callback = function(v) Flags.Bonus   = v end })
+    MainLeft:Toggle({ Name = "Auto Collect Money", Default = false, Callback = function(v) Flags.Collect = v end })
+    MainLeft:Toggle({ Name = "Anti AFK",           Default = false, Callback = function(v) Flags.AntiAfk = v end })
 
-    -- CHANGED: Status section moved into MainLeft below toggles
+    -- ── Status bar — left column (Farm Status + Feature Flags) ──
     MainLeft:Divider()
     MainLeft:Header({ Name = "Farm Status" })
-    local L_Overall = MainLeft:Label({    Text = "Overall  :  Idle"       })
-    local L_Farm    = MainLeft:SubLabel({ Text = "Farm     :  Inactive"   })
-    local L_Action  = MainLeft:SubLabel({ Text = "Action   :  None"       })
-    local L_Dist    = MainLeft:SubLabel({ Text = "Distance :  -- studs"   })
+    local L_Overall = MainLeft:Label({    Text = "Overall  :  Idle"     })
+    local L_Farm    = MainLeft:SubLabel({ Text = "Farm     :  Inactive" })
+    local L_Action  = MainLeft:SubLabel({ Text = "Action   :  None"     })
+    local L_Dist    = MainLeft:SubLabel({ Text = "Distance :  -- studs" })
 
     MainLeft:Divider()
     MainLeft:Header({ Name = "Feature Flags" })
@@ -193,39 +245,25 @@ local function runMainScript()
     })
     MainRight:Keybind({
         Name = "Toggle UI Keybind", Default = Enum.KeyCode.RightControl,
-        Callback  = function(b) Window:SetKeybind(b) end,
-        onBinded  = function(b)
+        Callback = function(b) Window:SetKeybind(b) end,
+        onBinded = function(b)
             Window:SetKeybind(b)
             Window:Notify({ Title = "PXG Hub", Description = "UI keybind: " .. b.Name, Lifetime = 3 })
         end,
     }, "UIKeybind")
-    MainRight:Button({ Name = "Rejoin",     Callback = function() TeleportService:Teleport(game.PlaceId, Players.LocalPlayer) end })
+    MainRight:Button({ Name = "Rejoin", Callback = function() TeleportService:Teleport(game.PlaceId, Players.LocalPlayer) end })
+
+    -- CHANGED: Server Hop now uses the lk_serverhop module
     MainRight:Button({
         Name = "Server Hop",
-        -- CHANGED: fixed server hop with proper error handling
         Callback = function()
-            local Http = game:GetService("HttpService")
-            local ok, result = pcall(function()
-                return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
+            pcall(function()
+                local module = loadstring(game:HttpGet("https://raw.githubusercontent.com/LeoKholYt/roblox/main/lk_serverhop.lua"))()
+                module:Teleport(game.PlaceId)
             end)
-            if not ok then
-                notify("Server Hop failed: couldn't reach API")
-                return
-            end
-            local parsed = Http:JSONDecode(result)
-            if not parsed or not parsed.data then
-                notify("Server Hop: no server data returned")
-                return
-            end
-            for _, s in pairs(parsed.data) do
-                if s.playing < s.maxPlayers and s.id ~= game.JobId then
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id)
-                    return
-                end
-            end
-            notify("Server Hop: no available servers found")
         end,
     })
+
     MainRight:Button({
         Name = "Destroy UI",
         Callback = function()
@@ -234,10 +272,10 @@ local function runMainScript()
         end,
     })
 
-    -- CHANGED: Performance/Session status moved into MainRight below buttons
+    -- ── Status bar — right column (Performance + Session) ─────
     MainRight:Divider()
     MainRight:Header({ Name = "Performance" })
-    local L_Speed  = MainRight:Label({    Text = "Tween Speed  :  90"  })
+    local L_Speed  = MainRight:Label({    Text = "Tween Speed  :  90"    })
     local L_Ping   = MainRight:SubLabel({ Text = "Ping         :  -- ms" })
     local L_FPS    = MainRight:SubLabel({ Text = "FPS          :  --"    })
     local L_Uptime = MainRight:SubLabel({ Text = "Uptime       :  0s"    })
@@ -268,7 +306,7 @@ local function runMainScript()
                 and (math.floor(upSec/60).."m "..(upSec%60).."s")
                 or  (upSec.."s")
 
-            local ping    = 0
+            local ping = 0
             pcall(function()
                 ping = math.round(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue())
             end)
@@ -319,14 +357,14 @@ local function runMainScript()
         local char = Players.LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if root and Flags.Farm then
-            platform.CFrame    = root.CFrame * CFrame.new(0, -6, 0)
-            platform.CanCollide= true
-            local targetPos  = targetCFrame.Position
-            local dist       = (targetPos - root.Position).Magnitude
+            platform.CFrame     = root.CFrame * CFrame.new(0, -6, 0)
+            platform.CanCollide = true
+            local targetPos = targetCFrame.Position
+            local dist      = (targetPos - root.Position).Magnitude
             if dist > 2 then
-                local dir    = (targetPos - root.Position).Unit
-                root.Velocity= Vector3.new(0, 0, 0)
-                root.CFrame  = root.CFrame + (dir * Flags.TpSpeed * deltaTime)
+                local dir     = (targetPos - root.Position).Unit
+                root.Velocity = Vector3.new(0, 0, 0)
+                root.CFrame   = root.CFrame + (dir * Flags.TpSpeed * deltaTime)
             end
         else
             platform.CanCollide = false
@@ -466,7 +504,7 @@ local BadgeStroke = Instance.new("UIStroke", Badge)
 BadgeStroke.Color     = Color3.fromRGB(70, 90, 200)
 BadgeStroke.Thickness = 1
 
--- Minimize button ( — )
+-- CHANGED: Minimize button — uses flat icon style (no dot, no color)
 local MinBtn = Instance.new("TextButton", Main)
 MinBtn.Size             = UDim2.fromOffset(28, 28)
 MinBtn.Position         = UDim2.new(1, -62, 0, 0)
@@ -474,23 +512,29 @@ MinBtn.Text             = "—"
 MinBtn.TextColor3       = Color3.fromRGB(160, 162, 185)
 MinBtn.Font             = Enum.Font.GothamBold
 MinBtn.TextSize         = 14
-MinBtn.BackgroundColor3 = Color3.fromRGB(28, 30, 45)
+MinBtn.BackgroundColor3 = Color3.fromRGB(36, 38, 56)
 MinBtn.BorderSizePixel  = 0
 MinBtn.ZIndex           = 4
-Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 6)
+local MinStroke = Instance.new("UIStroke", MinBtn)
+MinStroke.Color     = Color3.fromRGB(55, 58, 80)
+MinStroke.Thickness = 1
 
--- CHANGED: Close button text changed from × to X
+-- CHANGED: Close button — uses ✕ icon with red tint, flat background
 local CloseBtn = Instance.new("TextButton", Main)
 CloseBtn.Size             = UDim2.fromOffset(28, 28)
 CloseBtn.Position         = UDim2.new(1, -28, 0, 0)
-CloseBtn.Text             = "X"
-CloseBtn.TextColor3       = Color3.fromRGB(160, 162, 185)
+CloseBtn.Text             = "✕"
+CloseBtn.TextColor3       = Color3.fromRGB(220, 80, 80)
 CloseBtn.Font             = Enum.Font.GothamBold
-CloseBtn.TextSize         = 18
-CloseBtn.BackgroundColor3 = Color3.fromRGB(28, 30, 45)
+CloseBtn.TextSize         = 14
+CloseBtn.BackgroundColor3 = Color3.fromRGB(36, 38, 56)
 CloseBtn.BorderSizePixel  = 0
 CloseBtn.ZIndex           = 4
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
+local CloseStroke = Instance.new("UIStroke", CloseBtn)
+CloseStroke.Color     = Color3.fromRGB(55, 58, 80)
+CloseStroke.Thickness = 1
 
 -- Input box
 local InputBox = Instance.new("TextBox", Main)
@@ -606,9 +650,8 @@ end
 
 local function minimizeUI()
     if isAnimating or isMinimized then return end
-    isAnimating  = true
-    isMinimized  = true
-    -- Fade out card and backdrop
+    isAnimating = true
+    isMinimized = true
     TS:Create(Backdrop, FADE_OUT, { BackgroundTransparency = 1 }):Play()
     TS:Create(Main,     FADE_OUT, { GroupTransparency      = 1 }):Play()
     task.delay(0.3, function()
@@ -646,8 +689,8 @@ end
 
 addHover(Verify,   Color3.fromRGB(68, 110, 255), Color3.fromRGB(88, 128, 255))
 addHover(GetKey,   Color3.fromRGB(20, 22, 34),   Color3.fromRGB(30, 33, 52))
-addHover(CloseBtn, Color3.fromRGB(28, 30, 45),   Color3.fromRGB(50, 35, 45))
-addHover(MinBtn,   Color3.fromRGB(28, 30, 45),   Color3.fromRGB(35, 38, 60))
+addHover(CloseBtn, Color3.fromRGB(36, 38, 56),   Color3.fromRGB(60, 28, 28))
+addHover(MinBtn,   Color3.fromRGB(36, 38, 56),   Color3.fromRGB(42, 44, 66))
 addHover(Bubble,   Color3.fromRGB(68, 110, 255), Color3.fromRGB(88, 128, 255))
 
 -- Start open
@@ -719,9 +762,9 @@ if savedKey then
                 onValidKey()
             else
                 pcall(function() writefile(KEY_FILE, "") end)
-                Verify.Text             = "Check & Use Key"
-                Verify.BackgroundColor3 = Color3.fromRGB(68, 110, 255)
-                InputBox.Text           = ""
+                Verify.Text              = "Check & Use Key"
+                Verify.BackgroundColor3  = Color3.fromRGB(68, 110, 255)
+                InputBox.Text            = ""
                 InputBox.PlaceholderText = "Saved key expired — paste a new one"
                 notify("Saved key is no longer valid. Please re-enter.")
             end
