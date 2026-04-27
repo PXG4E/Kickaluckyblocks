@@ -76,13 +76,15 @@ local function runMainScript()
     local Window = MacLib:Window({
         Title        = "PXG HUB",
         Subtitle     = "Kick a Lucky Block",
-        Size         = isMobile and UDim2.fromOffset(420, 340) or UDim2.fromOffset(868, 650),
+        -- CHANGED: mobile size made much larger and less cramped
+        Size         = isMobile and UDim2.fromOffset(500, 620) or UDim2.fromOffset(868, 650),
         DragStyle    = isMobile and 2 or 1,
         AcrylicBlur  = not isMobile,
         ShowUserInfo = not isMobile,
         Keybind      = Enum.KeyCode.RightControl,
     })
-    if isMobile then Window:SetScale(0.62) end
+    -- CHANGED: bigger scale on mobile so text/buttons are readable
+    if isMobile then Window:SetScale(0.88) end
 
     -- Services
     local RunService       = game:GetService("RunService")
@@ -136,14 +138,12 @@ local function runMainScript()
     end
 
     -- ── Tabs ──────────────────────────────────────────────────
+    -- CHANGED: removed StatusTab, only one tab now
     local TabGroup  = Window:TabGroup()
     local MainTab   = TabGroup:Tab({ Name = "Main Settings" })
-    local StatusTab = TabGroup:Tab({ Name = "Status" })
 
     local MainLeft  = MainTab:Section({ Side = "Left"  })
     local MainRight = MainTab:Section({ Side = "Right" })
-    local StatLeft  = StatusTab:Section({ Side = "Left"  })
-    local StatRight = StatusTab:Section({ Side = "Right" })
 
     -- ── Main Left: toggles ────────────────────────────────────
     MainLeft:Toggle({
@@ -170,6 +170,21 @@ local function runMainScript()
     MainLeft:Toggle({ Name = "Auto Collect Money",Default = false, Callback = function(v) Flags.Collect = v end })
     MainLeft:Toggle({ Name = "Anti AFK",          Default = false, Callback = function(v) Flags.AntiAfk = v end })
 
+    -- CHANGED: Status section moved into MainLeft below toggles
+    MainLeft:Divider()
+    MainLeft:Header({ Name = "Farm Status" })
+    local L_Overall = MainLeft:Label({    Text = "Overall  :  Idle"       })
+    local L_Farm    = MainLeft:SubLabel({ Text = "Farm     :  Inactive"   })
+    local L_Action  = MainLeft:SubLabel({ Text = "Action   :  None"       })
+    local L_Dist    = MainLeft:SubLabel({ Text = "Distance :  -- studs"   })
+
+    MainLeft:Divider()
+    MainLeft:Header({ Name = "Feature Flags" })
+    local L_Sell    = MainLeft:SubLabel({ Text = "Auto Sell    :  Off" })
+    local L_Bonus   = MainLeft:SubLabel({ Text = "Auto Bonus   :  Off" })
+    local L_Collect = MainLeft:SubLabel({ Text = "Auto Collect :  Off" })
+    local L_AFK     = MainLeft:SubLabel({ Text = "Anti AFK     :  Off" })
+
     -- ── Main Right: controls ──────────────────────────────────
     MainRight:Slider({
         Name = "Tween Speed", Default = 90, Minimum = 1, Maximum = 200,
@@ -187,16 +202,28 @@ local function runMainScript()
     MainRight:Button({ Name = "Rejoin",     Callback = function() TeleportService:Teleport(game.PlaceId, Players.LocalPlayer) end })
     MainRight:Button({
         Name = "Server Hop",
+        -- CHANGED: fixed server hop with proper error handling
         Callback = function()
             local Http = game:GetService("HttpService")
-            local Api = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Desc&limit=100"
-            local Servers = Http:JSONDecode(game:HttpGet(Api))
-            for _, s in pairs(Servers.data) do
+            local ok, result = pcall(function()
+                return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
+            end)
+            if not ok then
+                notify("Server Hop failed: couldn't reach API")
+                return
+            end
+            local parsed = Http:JSONDecode(result)
+            if not parsed or not parsed.data then
+                notify("Server Hop: no server data returned")
+                return
+            end
+            for _, s in pairs(parsed.data) do
                 if s.playing < s.maxPlayers and s.id ~= game.JobId then
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id)
-                    break
+                    return
                 end
             end
+            notify("Server Hop: no available servers found")
         end,
     })
     MainRight:Button({
@@ -207,31 +234,19 @@ local function runMainScript()
         end,
     })
 
-    -- ── Status Tab ────────────────────────────────────────────
-    StatLeft:Header({ Name = "Farm Status" })
-    local L_Overall = StatLeft:Label({    Text = "Overall  :  Idle"       })
-    local L_Farm    = StatLeft:SubLabel({ Text = "Farm     :  Inactive"   })
-    local L_Action  = StatLeft:SubLabel({ Text = "Action   :  None"       })
-    local L_Dist    = StatLeft:SubLabel({ Text = "Distance :  -- studs"   })
+    -- CHANGED: Performance/Session status moved into MainRight below buttons
+    MainRight:Divider()
+    MainRight:Header({ Name = "Performance" })
+    local L_Speed  = MainRight:Label({    Text = "Tween Speed  :  90"  })
+    local L_Ping   = MainRight:SubLabel({ Text = "Ping         :  -- ms" })
+    local L_FPS    = MainRight:SubLabel({ Text = "FPS          :  --"    })
+    local L_Uptime = MainRight:SubLabel({ Text = "Uptime       :  0s"    })
 
-    StatLeft:Divider()
-    StatLeft:Header({ Name = "Feature Flags" })
-    local L_Sell    = StatLeft:SubLabel({ Text = "Auto Sell    :  Off" })
-    local L_Bonus   = StatLeft:SubLabel({ Text = "Auto Bonus   :  Off" })
-    local L_Collect = StatLeft:SubLabel({ Text = "Auto Collect :  Off" })
-    local L_AFK     = StatLeft:SubLabel({ Text = "Anti AFK     :  Off" })
-
-    StatRight:Header({ Name = "Performance" })
-    local L_Speed  = StatRight:Label({    Text = "Tween Speed  :  90"  })
-    local L_Ping   = StatRight:SubLabel({ Text = "Ping         :  -- ms" })
-    local L_FPS    = StatRight:SubLabel({ Text = "FPS          :  --"    })
-    local L_Uptime = StatRight:SubLabel({ Text = "Uptime       :  0s"    })
-
-    StatRight:Divider()
-    StatRight:Header({ Name = "Session" })
-    local L_Kicks    = StatRight:SubLabel({ Text = "Kicks done   :  0" })
-    local L_Sells    = StatRight:SubLabel({ Text = "Sells done   :  0" })
-    local L_Collects = StatRight:SubLabel({ Text = "Collects     :  0" })
+    MainRight:Divider()
+    MainRight:Header({ Name = "Session" })
+    local L_Kicks    = MainRight:SubLabel({ Text = "Kicks done   :  0" })
+    local L_Sells    = MainRight:SubLabel({ Text = "Sells done   :  0" })
+    local L_Collects = MainRight:SubLabel({ Text = "Collects     :  0" })
 
     -- FPS tracker
     local lastFPS, fpsCount, fpsAccum = 60, 0, 0
@@ -464,11 +479,11 @@ MinBtn.BorderSizePixel  = 0
 MinBtn.ZIndex           = 4
 Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 8)
 
--- Close button ( × )
+-- CHANGED: Close button text changed from × to X
 local CloseBtn = Instance.new("TextButton", Main)
 CloseBtn.Size             = UDim2.fromOffset(28, 28)
 CloseBtn.Position         = UDim2.new(1, -28, 0, 0)
-CloseBtn.Text             = "×"
+CloseBtn.Text             = "X"
 CloseBtn.TextColor3       = Color3.fromRGB(160, 162, 185)
 CloseBtn.Font             = Enum.Font.GothamBold
 CloseBtn.TextSize         = 18
